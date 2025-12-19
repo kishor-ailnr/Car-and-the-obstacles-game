@@ -1,0 +1,208 @@
+#include<stdio.h>
+#include<stdlib.h>
+#include<time.h>
+#ifdef _WIN32
+#include<conio.h>
+#include<windows.h>
+#else
+#include<unistd.h>
+#include<termios.h>
+#include<fcntl.h>
+#endif
+#define ROWS 20
+#define COLS 5
+#define OBSTACLE_COUNT 3
+void initGame(char road[][COLS],int *pCarRow,int *pCarCol,
+              int obsRow[],int obsCol[],int *pScore);
+void drawGame(char road[][COLS], int carRow,int carCol,
+              int obsRow[],int obsCol[],int score);
+void updateObstacles(int obsRow[], int obsCol[], int score);
+void moveCar(int *pCarRow,int *pCarCol,char input);
+int checkCollision(int carRow,int carCol,int obsRow[],int obsCol[]);
+int getSpeedDelay(int score);
+void sleep_ms(int ms)
+ {
+#ifdef _WIN32
+    Sleep(ms);
+#else
+    usleep(ms*1000);
+#endif
+}
+int key_hit()
+ {
+#ifdef _WIN32
+    return kbhit();
+#else
+    struct termios oldt, newt;
+    int ch;
+    int oldf;
+    tcgetattr(STDIN_FILENO, &oldt);
+    newt = oldt;
+    newt.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+    oldf = fcntl(STDIN_FILENO, F_GETFL, 0);
+    fcntl(STDIN_FILENO,F_SETFL,oldf | O_NONBLOCK);
+    ch = getchar();
+    tcsetattr(STDIN_FILENO,TCSANOW,&oldt);
+    fcntl(STDIN_FILENO, F_SETFL, oldf);
+    if (ch != EOF) {
+        ungetc(ch, stdin);
+        return 1;
+    }
+    return 0;
+#endif
+}
+int main()
+{
+    char road[ROWS][COLS];
+    int carRow, carCol;
+    int obsRow[OBSTACLE_COUNT];
+    int obsCol[OBSTACLE_COUNT];
+    int score;
+    int gameOver = 0;
+    char input;
+    srand((unsigned int)time(NULL));
+    int *pCarRow=&carRow;
+    int *pCarCol=&carCol;
+    int *pScore=&score;
+    initGame(road,pCarRow,pCarCol,obsRow,obsCol,pScore);
+    while(!gameOver)
+     {
+        drawGame(road,carRow,carCol,obsRow,obsCol,score);
+        input=0;
+        if (key_hit()) {
+#ifdef _WIN32
+            input = getch();
+#else
+            input=getchar();
+#endif
+            if (input=='q'||input=='Q')
+                {
+                break;
+            }
+            moveCar(pCarRow,pCarCol,input);
+        }
+        updateObstacles(obsRow,obsCol,score);
+        if(checkCollision(carRow,carCol,obsRow,obsCol))
+            {
+            gameOver=1;
+        } else
+         {
+            (*pScore)++;
+        }
+        int delay=getSpeedDelay(score);
+        sleep_ms(delay);
+    }
+    printf("\nGame Over! Final score = %d\n",score);
+    return 0;
+}
+void initGame(char road[][COLS],int *pCarRow,int *pCarCol,
+              int obsRow[],int obsCol[],int *pScore) {
+    int i,j;
+    for (i=0;i<ROWS;i++)
+        for (j=0;j<COLS;j++)
+            road[i][j] = '.';
+    *pCarRow=ROWS-1;
+    *pCarCol=COLS/2;
+    obsRow[0] = 0;          obsCol[0] = rand() % COLS;
+    obsRow[1] = -7;         obsCol[1] = rand() % COLS;
+    obsRow[2] = -14;        obsCol[2] = rand() % COLS;
+    *pScore = 0;
+}
+void drawGame(char road[][COLS],int carRow,int carCol,
+              int obsRow[],int obsCol[],int score)
+               {
+    int i, j;
+#ifdef _WIN32
+    system("cls");
+#else
+    system("clear");
+#endif
+    for (i=0;i<ROWS;i++)
+        for (j=0;j<COLS;j++)
+            road[i][j] = '.';
+    for (i=0;i<OBSTACLE_COUNT;i++) {
+        if (obsRow[i]>=0&&obsRow[i]<ROWS)
+            {
+            road[obsRow[i]][obsCol[i]]='O';
+        }
+    }
+    if (carRow>=0&&carRow<ROWS&&carCol>=0&&carCol<COLS)
+        road[carRow][carCol] = 'C';
+    printf("Controls: W=Up  S=Down  A=Left  D=Right  Q=Quit\n");
+    printf("Score: %d\n\n",score);
+    for (i=0;i<ROWS;i++)
+        {
+        for (j=0;j<COLS;j++)
+            printf("%c ",road[i][j]);
+        printf("\n");
+    }
+}
+int getSpeedDelay(int score)
+{
+    int base=200;
+    int level=score/30;
+    int delay=base-level*30;
+    if (delay<60) delay=60;
+    return delay;
+}
+void updateObstacles(int obsRow[],int obsCol[],int score)
+ {
+    int i,j;
+    if(score<30)
+        {
+        obsRow[0]++;
+        if (obsRow[0]>=ROWS) {
+            obsRow[0]=0;
+            obsCol[0]=rand()%COLS;
+        }
+        for (i=1;i<OBSTACLE_COUNT;i++)
+         {
+            if (obsRow[i]<0) obsRow[i]--;
+        }
+        return;
+    }
+    for (i=0;i<OBSTACLE_COUNT;i++) {
+        obsRow[i]++;
+        if (obsRow[i]>=ROWS)
+         {
+            obsRow[i]=0;
+            int lane, clash;
+            do {
+                lane=rand()%COLS;
+                clash=0;
+                for (j=0;j<OBSTACLE_COUNT;j++)
+                 {
+                    if (j!=i&&obsRow[j]==obsRow[i]&&
+                        obsCol[j]==lane) {
+                        clash=1;
+                        break;
+                    }
+                }
+            } while(clash);
+
+            obsCol[i]=lane;
+        }
+    }
+}
+void moveCar(int *pCarRow,int *pCarCol,char input) {
+    if (input=='a'||input=='A')
+        {
+        if (*pCarCol>0) (*pCarCol)--;
+    } else if (input=='d'||input=='D') {
+        if (*pCarCol<COLS - 1) (*pCarCol)++;
+    } else if (input=='w'||input=='W') {
+        if (*pCarRow>0) (*pCarRow)--;
+    } else if (input=='s'||input=='S') {
+        if (*pCarRow<ROWS-1) (*pCarRow)++;
+    }
+}
+int checkCollision(int carRow, int carCol, int obsRow[], int obsCol[]) {
+    int i;
+    for (i =0;i<OBSTACLE_COUNT;i++) {
+        if(obsRow[i]==carRow&&obsCol[i]==carCol) {
+            return 1;
+        }
+    }
+    return 0;
+}
